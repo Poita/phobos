@@ -150,7 +150,8 @@ SRC_STD_7= \
 	std\json.d \
 	std\parallelism.d \
 	std\mathspecial.d \
-	std\process.d
+	std\process.d \
+	std\combinatorics.d
 
 SRC_STD_ALL= $(SRC_STD_1_HEAVY) $(SRC_STD_2_HEAVY) $(SRC_STD_2a_HEAVY) \
 	$(SRC_STD_math) \
@@ -189,7 +190,8 @@ SRC_STD= std\zlib.d std\zip.d std\stdint.d std\container.d std\conv.d std\utf.d 
 	std\json.d std\xml.d std\encoding.d std\bigint.d std\concurrency.d \
 	std\range.d std\stdiobase.d std\parallelism.d \
 	std\regex.d \
-	std\exception.d std\ascii.d
+	std\exception.d std\ascii.d \
+	std\combinatorics.d
 
 SRC_STD_NET= std\net\isemail.d std\net\curl.d
 
@@ -304,6 +306,7 @@ DOCS=	$(DOC)\object.html \
 	$(DOC)\std_bigint.html \
 	$(DOC)\std_bitmanip.html \
 	$(DOC)\std_concurrency.html \
+	$(DOC)\std_combinatorics.html \
 	$(DOC)\std_compiler.html \
 	$(DOC)\std_complex.html \
 	$(DOC)\std_container.html \
@@ -539,6 +542,9 @@ $(DOC)\std_bitmanip.html : $(STDDOC) std\bitmanip.d
 
 $(DOC)\std_concurrency.html : $(STDDOC) std\concurrency.d
 	$(DMD) -c -o- $(DDOCFLAGS) -Df$(DOC)\std_concurrency.html $(STDDOC) std\concurrency.d
+
+$(DOC)\std_combinatorics.html : $(STDDOC) std\combinatorics.d
+	$(DMD) -c -o- $(DDOCFLAGS) -Df$(DOC)\std_combinatorics.html $(STDDOC) std\combinatorics.d
 
 $(DOC)\std_compiler.html : $(STDDOC) std\compiler.d
 	$(DMD) -c -o- $(DDOCFLAGS) -Df$(DOC)\std_compiler.html $(STDDOC) std\compiler.d
