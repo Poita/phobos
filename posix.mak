@@ -162,8 +162,8 @@ endif
 MAIN = $(ROOT)/emptymain.d
 
 # Stuff in std/
-STD_MODULES = $(addprefix std/, algorithm array ascii base64 bigint		\
-        bitmanip combinatorics compiler complex concurrency container conv \
+STD_MODULES = $(addprefix std/, combinatorics algorithm array ascii base64 bigint	    \
+        bitmanip compiler complex concurrency container conv \
         cpuid cstream ctype csv datetime demangle encoding exception	\
         file format functional getopt json math mathspecial md5	\
         metastrings mmfile numeric outbuffer parallelism path perf		\
