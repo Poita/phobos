@@ -717,7 +717,15 @@ private struct Word(Range)
 
 	@property auto front() { return _alphabet[(_index / _divisor) % _alphabet.length]; }
 	@property bool empty() const { return _divisor == 0; }
-	void popFront() { _divisor /= _alphabet.length; }
+
+	void popFront()
+	{
+		size_t numLetters = _alphabet.length;
+		if (numLetters == 1)
+			_divisor = _index-- == 0 ? 0 : 1;
+		else
+			_divisor /= numLetters;
+	}
 
 	private Range _alphabet;
 	private size_t _index;
@@ -725,12 +733,13 @@ private struct Word(Range)
 }
 
 struct Words(Range)
-	if (isForwardRange!Range &&
+	if (isRandomAccessRange!Range &&
 		hasLength!Range &&
 		!isInfinite!Range)
 {
 	this(Range alphabet)
 	{
+		assert(!alphabet.empty, "words over an empty alphabet not supported.");
 		_alphabet = alphabet.save;
 	}
 
@@ -750,12 +759,15 @@ struct Words(Range)
 		index += _index;
 		size_t numLetters = _alphabet.length;
 		size_t divisor = _divisor;
-		size_t nextDivisor = divisor * numLetters;
-		size_t maxDivisor = size_t.max / numLetters; // overflow protection
-		while (nextDivisor <= index && divisor <= maxDivisor)
+		if (numLetters != 1)
 		{
-			divisor = nextDivisor;
-			nextDivisor *= numLetters;
+			size_t nextDivisor = divisor * numLetters;
+			size_t maxDivisor = size_t.max / numLetters; // overflow protection
+			while (nextDivisor <= index && divisor <= maxDivisor)
+			{
+				divisor = nextDivisor;
+				nextDivisor *= numLetters;
+			}
 		}
 		return Word!Range(_alphabet.save, index, divisor);
 	}
@@ -767,6 +779,7 @@ struct Words(Range)
 
 Words!Range words(Range)(Range alphabet)
 {
+	// TODO: add k-length words
 	return Words!Range(alphabet);
 }
 
@@ -786,6 +799,13 @@ unittest
 	assert(equal(base2[4294967295u], "11111111111111111111111111111111"));
 	static if (size_t.sizeof == 8)
 		assert(equal(base2[size_t.max], "1111111111111111111111111111111111111111111111111111111111111111"));
+
+	auto base1 = words("."d);
+	assert(equal!equal(base1.take(4), [".", "..", "...", "...."]));
+	assert(equal(base1[0], "."));
+	assert(equal(base1[1], ".."));
+	assert(equal(base1[2], "..."));
+	assert(equal(base1[3], "...."));
 }
 
 
@@ -848,3 +868,4 @@ unittest
 // - derangements
 // - even permutations
 // - non-crossing partitions
+// - range assertions
