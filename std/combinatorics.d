@@ -652,7 +652,7 @@ struct IntegerPartitions(Int)
 			--_lastNon1;
 		Int rem = cast(Int)(_size - i);
 		++i;
-		for (; rem != 0; rem -= _buffer[i++])
+		for (; rem != 0; rem -= _buffer[i], ++i)
 		{
 			_buffer[i] = min(_buffer[i-1], rem);
 			if (_buffer[i] != 1)
@@ -701,6 +701,91 @@ unittest
 	assert(equal!equal(integerPartitions(2), p2));
 	assert(equal!equal(integerPartitions(1), p1));
 	assert(equal!equal(integerPartitions(0), p0));
+}
+
+private struct Word(Range)
+	if (isRandomAccessRange!Range &&
+		hasLength!Range &&
+		!isInfinite!Range)
+{
+	this(Range alphabet, size_t index, size_t divisor)
+	{
+		_alphabet = alphabet;
+		_index = index;
+		_divisor = divisor;
+	}
+
+	@property auto front() { return _alphabet[(_index / _divisor) % _alphabet.length]; }
+	@property bool empty() const { return _divisor == 0; }
+	void popFront() { _divisor /= _alphabet.length; }
+
+	private Range _alphabet;
+	private size_t _index;
+	private size_t _divisor;
+}
+
+struct Words(Range)
+	if (isForwardRange!Range &&
+		hasLength!Range &&
+		!isInfinite!Range)
+{
+	this(Range alphabet)
+	{
+		_alphabet = alphabet.save;
+	}
+
+	@property auto front() { return Word!Range(_alphabet.save, _index, _divisor); }
+	@property enum bool empty = false;
+
+	void popFront()
+	{
+		++_index;
+		if (_index >= _divisor * _alphabet.length)
+			_divisor *= _alphabet.length;
+	}
+
+	auto opIndex(size_t index)
+	{
+		// TODO: better algo for finding divisor
+		index += _index;
+		size_t numLetters = _alphabet.length;
+		size_t divisor = _divisor;
+		size_t nextDivisor = divisor * numLetters;
+		size_t maxDivisor = size_t.max / numLetters; // overflow protection
+		while (nextDivisor <= index && divisor <= maxDivisor)
+		{
+			divisor = nextDivisor;
+			nextDivisor *= numLetters;
+		}
+		return Word!Range(_alphabet.save, index, divisor);
+	}
+
+	private Range _alphabet;
+	private size_t _index = 0;
+	private size_t _divisor = 1;
+}
+
+Words!Range words(Range)(Range alphabet)
+{
+	return Words!Range(alphabet);
+}
+
+unittest
+{
+	auto base10 = words("0123456789"d);
+	assert(equal!equal(base10.take(200), iota(200).map!(to!dstring)()));
+	assert(equal(base10[0], "0"d));
+	assert(equal(base10[1], "1"d));
+	assert(equal(base10[9999], "9999"d));
+	assert(equal(base10[10000], "10000"d));
+	assert(equal(base10[10001], "10001"d));
+	assert(equal(base10[size_t.max], to!dstring(size_t.max)));
+
+	auto base2 = words("01"d);
+	assert(equal!equal(base2.take(8), ["0", "1", "10", "11", "100", "101", "110", "111"]));
+	assert(equal(base2[4294967295u], "11111111111111111111111111111111"));
+	static if (size_t.sizeof == 8)
+		assert(equal(base2[size_t.max], "1111111111111111111111111111111111111111111111111111111111111111"));
 }
 
 
@@ -757,7 +842,6 @@ unittest
 // - fibonacci
 // - integer compositions
 // - algorithms for large/real values
-// - words over alphabet
 // - k-permutations
 // - integer compositions (ordered partitions)
 // - set compositions
