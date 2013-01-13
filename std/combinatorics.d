@@ -21,6 +21,7 @@ import core.bitop;
 import std.algorithm;
 import std.array;
 import std.conv;
+import std.exception;
 import std.functional;
 import std.range;
 import std.traits;
@@ -120,6 +121,47 @@ unittest
 }
 
 /**
+   Gets the $(D n)th Bell number.
+ */
+Int bellNumber(Int)(uint n)
+{
+	// TODO: overflow
+	if (n < bellNumbersCache.length)
+		return bellNumbersCache[n].to!Int();
+	// TODO: BigInt algorithm
+	// TODO: real number algorithm
+	return 0;
+}
+
+// Cache of all Bell numbers below ulong.max
+private immutable ulong[] bellNumbersCache = [ 1UL,
+											   1UL,
+                                               2UL,
+                                               5UL,
+                                              15UL,
+                                              52UL,
+                                             203UL,
+                                             877UL,
+                                           4_140UL,
+                                          21_147UL,
+                                         115_975UL,
+                                         678_570UL,
+                                       4_213_597UL,
+                                      27_644_437UL,
+                                     190_899_322UL,
+                                   1_382_958_545UL,
+                                  10_480_142_147UL,
+                                  82_864_869_804UL,
+                                 682_076_806_159UL,
+                               5_832_742_205_057UL,
+                              51_724_158_235_372UL,
+                             474_869_816_156_751UL,
+                           4_506_715_738_447_323UL,
+                          44_152_005_855_084_346UL,
+                         445_958_869_294_805_289UL,
+                       4_638_590_332_229_999_353UL ];
+
+/**
 Next permutation.
  */
 bool nextPermutation(alias pred = ((a, b) => a < b), Range)(Range r)
@@ -205,7 +247,7 @@ auto permutations(alias pred = ((a, b) => a < b), Range)(Range r)
 	if (isInputRange!Range &&
         is(typeof(binaryFun!pred(r.front, r.front)) : bool))
 {
-	return Permutations!(pred, ElementType!Range)(r);
+	return Permutations!(pred, Unqual!(ElementType!Range))(r);
 }
 
 private struct Permutations(alias pred = ((a, b) => a < b), Value)
@@ -214,15 +256,18 @@ private struct Permutations(alias pred = ((a, b) => a < b), Value)
 
 	this(Range)(Range source)
 	{
-		_front = array(source.save);
-		_back = array(source.save);
+		// TODO: better way?
+		auto frontAppender = appender!(Value[])();
+		_front = copy(source.save, frontAppender).data;
+		auto backAppender = appender!(Value[])();
+		_back = copy(source.save, backAppender).data;
 		_length = countPermutations!(size_t, pred)(_front);
 		previousPermutation(_back);
 		_onLast = equal(_front, _back);
 		_done = false;
 	}
 
-	@property auto front() { return _front; }
+	@property auto front() { return _front.dup; }
 	@property auto back() { return _back; }
 	@property bool empty() const { return _done; }
 	@property size_t length() const { return _length; }
@@ -356,7 +401,7 @@ private struct Subset(Range)
    of $(D range) will be present in the subset if the ($ n)th bit is set in
    $(D mask).
   */
-Subset!Range subset(Range)(Range range, ulong mask)
+auto subset(Range)(Range range, ulong mask)
 	if (isInputRange!Range)
 {
 	return Subset!Range(range, mask);
@@ -852,6 +897,103 @@ unittest
 	assert(equal!equal(integerPartitions(11, 4), p11_4));
 }
 
+private struct SetPartitions(Range)
+	if(isRandomAccessRange!Range &&
+	   !isInfinite!Range)
+{
+	this(Range r)
+	{
+		size_t n = walkLength(r.save);
+		_ks.length = n;
+		_ms.length = n;
+		_masks.length = n;
+		_ks[] = 0;
+		_ms[] = 0;
+		_masks[1..$] = 0;
+		_masks[0] = (1 << n) - 1;
+		_set = r;
+		_length = bellNumber!size_t(n);
+	}
+
+	@property auto front()
+	{
+		return _masks.filter!(a => a != 0)().map!(a => subset(_set, a))();
+	}
+
+	@property bool empty() const { return _empty; }
+	@property size_t length() const { return _length; }
+
+	void popFront()
+	{
+		--_length;
+		size_t n = _ks.length;
+		for (size_t i = n - 1; i > 0; --i)
+		{
+			if (_ks[i] <= _ms[i - 1])
+			{
+				auto imask = 1 << i;
+				_masks[_ks[i]] ^= imask;
+				++_ks[i];
+				_masks[_ks[i]] ^= imask;
+
+				_ms[i] = max(_ms[i], _ks[i]);
+				for (size_t j = i + 1; j < n; ++j)
+				{
+					auto jmask = 1 << j;
+					_masks[_ks[j]] ^= jmask;
+					_ks[j] = _ks[0];
+					_masks[_ks[j]] ^= jmask; // TODO: is this right!?
+					_ms[j] = _ms[i];
+				}
+				return;
+			}
+		}
+		_empty = true;
+		assert(_length == 0, "Reached end, but length is not zero.");
+	}
+
+	// TODO back, popBack
+	// TODO opIndex
+
+	private Range _set;
+	private size_t[] _ks;
+	private size_t[] _ms;
+	private size_t[] _masks;
+	private size_t _length;
+	private bool _empty = false;
+}
+
+/**
+   Returns a range of the set partitions of the range $(D r). Each set
+   partition is a range of ranges, so the result of this function is a range
+   of range of ranges.
+*/
+auto setPartitions(Range)(Range r)
+{
+	return SetPartitions!Range(r);
+}
+
+unittest
+{
+	dstring[][] abcd_parts = [["abcd"],
+	                          ["abc", "d"],
+	                          ["abd", "c"],
+	                          ["ab", "cd"],
+	                          ["ab", "c", "d"],
+	                          ["acd", "b"],
+	                          ["ac", "bd"],
+	                          ["ac", "b", "d"],
+	                          ["ad", "bc"],
+	                          ["a", "bcd"],
+	                          ["a", "bc", "d"],
+	                          ["ad", "b", "c"],
+	                          ["a", "bd", "c"],
+	                          ["a", "b", "cd"],
+	                          ["a", "b", "c", "d"]];
+	alias equalRoR = binaryFun!((a, b) => equal!equal(a, b));
+	assert(equal!equalRoR(setPartitions("abcd"d), abcd_parts));
+}
+
 private struct Word(Range)
 	if (isRandomAccessRange!Range &&
 		hasLength!Range &&
@@ -1107,13 +1249,14 @@ unittest
 // http://theory.cs.uvic.ca/dis/programs.html (lots of algos)
 // http://www.keithschwarz.com/binary-subsets/ (lex subset)
 // http://www.math.dartmouth.edu/archive/m68f07/public_html/lectec.pdf
+// http://www.informatik.uni-ulm.de/ni/Lehre/WS04/DMM/Software/partitions.pdf
 
 // WANT:
 // - ordering (lex, colex, grey, fastest)
-// - set partitions
+// - non-crossing partitions
 // - catalan numbers
+// - set k-partitions
 // - combinations
-// - bell numbers
 // - stirling numbers 1st + 2nd
 // - fibonacci
 // - integer compositions
@@ -1123,9 +1266,10 @@ unittest
 // - set compositions
 // - derangements
 // - even permutations
-// - non-crossing partitions
 // - range assertions
 // - forward permutations
+// - big O
+// - const correctness
 
 // - random sampling
 // - ranking/unranking
