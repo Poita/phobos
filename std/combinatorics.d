@@ -30,6 +30,7 @@ version (unittest)
 	import std.bigint;
 	import std.conv;
 	import std.stdio;
+	import std.string;
 	import std.typetuple;
 }
 
@@ -197,6 +198,9 @@ unittest
 	// TODO: test more range types
 }
 
+/**
+   Returns a range of the permutations of $(D r).
+ */
 auto permutations(alias pred = ((a, b) => a < b), Range)(Range r)
 	if (isInputRange!Range &&
         is(typeof(binaryFun!pred(r.front, r.front)) : bool))
@@ -293,10 +297,7 @@ unittest
 	// TODO: try larger permutations
 }
 
-/**
-   Iterates a subset of a range, defined by a bitmask.
-  */
-struct Subset(Range)
+private struct Subset(Range)
 	if (isInputRange!Range)
 {
 	// TODO: add bidir support
@@ -384,7 +385,7 @@ unittest
 	// TODO: test more range types
 }
 
-struct PowerSet(Range)
+private struct PowerSet(Range)
 	if (isForwardRange!Range)
 {
 	// TODO: different orderings (colex etc.)
@@ -439,6 +440,9 @@ struct PowerSet(Range)
 	private size_t _mask = 0; // TODO: support > 63 elements
 }
 
+/**
+   Returns a range of all the subsets of $(D r), i.e. the $(I power set) of $(D r).
+ */
 PowerSet!Range subsets(Range)(Range r)
 	if (isForwardRange!Range)
 {
@@ -471,7 +475,7 @@ unittest
 	assert(equal!equal(subsets([1]), [[], [1]]));
 }
 
-struct KSubsets(Range)
+private struct KSubsets(Range)
 	if (isForwardRange!Range)
 {
 	// TODO: orderings
@@ -528,6 +532,9 @@ struct KSubsets(Range)
 	}
 }
 
+/**
+   Returns a range of the $(D k)-length subsets of $(D range).
+ */
 KSubsets!Range kSubsets(Range)(Range range, size_t k)
 {
 	return KSubsets!Range(range, k);
@@ -573,6 +580,9 @@ unittest
 	//TODO: more range types
 }
 
+/**
+   Return the number of integer partitions of $(D n).
+ */
 Int countIntegerPartitions(Int)(size_t n)
 {
 	// TODO: what to do about large n?
@@ -682,25 +692,164 @@ struct IntegerPartitions(Int)
 	private size_t _length;
 }
 
-IntegerPartitions!Int integerPartitions(Int)(Int n)
+/**
+   Returns a range of integer partitions of $(D n).
+ */
+auto integerPartitions(Int)(Int n)
 {
 	return IntegerPartitions!Int(n);
 }
 
 unittest
 {
-	int[][] p5 = [[5], [4, 1], [3, 2], [3, 1, 1], [2, 2, 1], [2, 1, 1, 1], [1, 1, 1, 1, 1]];
-	int[][] p4 = [[4], [3, 1], [2, 2], [2, 1, 1], [1, 1, 1, 1]];
-	int[][] p3 = [[3], [2, 1], [1, 1, 1]];
-	int[][] p2 = [[2], [1, 1]];
-	int[][] p1 = [[1]];
 	int[][] p0 = [[0]];
-	assert(equal!equal(integerPartitions(5), p5));
-	assert(equal!equal(integerPartitions(4), p4));
-	assert(equal!equal(integerPartitions(3), p3));
-	assert(equal!equal(integerPartitions(2), p2));
-	assert(equal!equal(integerPartitions(1), p1));
+	int[][] p1 = [[1]];
+	int[][] p2 = [[2], [1, 1]];
+	int[][] p3 = [[3], [2, 1], [1, 1, 1]];
+	int[][] p4 = [[4], [3, 1], [2, 2], [2, 1, 1], [1, 1, 1, 1]];
+	int[][] p5 = [[5], [4, 1], [3, 2], [3, 1, 1], [2, 2, 1], [2, 1, 1, 1], [1, 1, 1, 1, 1]];
 	assert(equal!equal(integerPartitions(0), p0));
+	assert(equal!equal(integerPartitions(1), p1));
+	assert(equal!equal(integerPartitions(2), p2));
+	assert(equal!equal(integerPartitions(3), p3));
+	assert(equal!equal(integerPartitions(4), p4));
+	assert(equal!equal(integerPartitions(5), p5));
+}
+
+/**
+   Return the number of $(D k)-length integer partitions of $(D n).
+ */
+Int countIntegerPartitions(Int)(size_t n, size_t k)
+{
+	// TOOD: what to do with large values?
+	if (n == 0) return 1;
+	if (n < k) return 0;
+	if (k == 1 || k == n) return 1;
+
+	alias countIntegerPartitions p;
+	return p(n - 1, k - 1) + p(n - k, k);
+}
+
+unittest
+{
+	assert(countIntegerPartitions!size_t(0, 1) == 1);
+	assert(countIntegerPartitions!size_t(1, 1) == 1);
+	assert(countIntegerPartitions!size_t(2, 1) == 1);
+	assert(countIntegerPartitions!size_t(2, 2) == 1);
+	assert(countIntegerPartitions!size_t(3, 1) == 1);
+	assert(countIntegerPartitions!size_t(3, 2) == 1);
+	assert(countIntegerPartitions!size_t(3, 3) == 1);
+	assert(countIntegerPartitions!size_t(4, 1) == 1);
+	assert(countIntegerPartitions!size_t(4, 2) == 2);
+	assert(countIntegerPartitions!size_t(4, 3) == 1);
+	assert(countIntegerPartitions!size_t(4, 4) == 1);
+	assert(countIntegerPartitions!size_t(5, 1) == 1);
+	assert(countIntegerPartitions!size_t(5, 2) == 2);
+	assert(countIntegerPartitions!size_t(5, 3) == 2);
+	assert(countIntegerPartitions!size_t(5, 4) == 1);
+	assert(countIntegerPartitions!size_t(5, 5) == 1);
+	assert(countIntegerPartitions!size_t(11, 4) == 11);
+}
+
+struct IntegerKPartitions(Int)
+	if (isIntegral!Int)
+{
+	this(Int n, size_t k)
+	{
+		assert(k <= n || n == 0);
+		assert(k != 0);
+		_buffer.length = k;
+		_buffer[0] = n - k + 1;
+		_buffer[1..$] = 1;
+		_length = countIntegerPartitions!size_t(n, k);
+		_n = n;
+	}
+
+	@property const(Int)[] front() const { return _buffer; }
+	@property bool empty() const { return _empty; }
+	@property size_t length() const { return _length; }
+
+	void popFront()
+	{
+		--_length;
+		size_t i = 1;
+		for (; i < _buffer.length; ++i)
+			if (_buffer[i] < _buffer[0] - 1)
+				break;
+		_empty = (i == _buffer.length);
+		if (_empty)
+			return;
+		_buffer[1..i+1] = _buffer[i] + 1;
+		_buffer[0] = _n - reduce!((a, b) => a + b)(_buffer[1..$]);
+	}
+
+	@property IntegerKPartitions save() const
+	{
+		IntegerKPartitions copy;
+		copy._buffer = _buffer.dup;
+		copy._empty = _empty;
+		copy._n = _n;
+		return copy;
+	}
+
+
+	// TODO: bidir
+	// TODO: random
+	// TODO: orders
+
+	private Int[] _buffer;
+	private size_t _length;
+	private bool _empty = false;
+	private Int _n;
+}
+
+/**
+   Returns a range of integer partitions of $(D n) into exactly $(D k) parts,
+   where ($(D k <= n)).
+ */
+auto integerPartitions(Int)(Int n, size_t k)
+{
+	return IntegerKPartitions!Int(n, k);
+}
+
+unittest
+{
+	int[][] p0_1 = [[0]];
+	int[][] p1_1 = [[1]];
+	int[][] p2_1 = [[2]];
+	int[][] p2_2 = [[1, 1]];
+	int[][] p3_1 = [[3]];
+	int[][] p3_2 = [[2, 1]];
+	int[][] p3_3 = [[1, 1, 1]];
+	int[][] p4_1 = [[4]];
+	int[][] p4_2 = [[3, 1], [2, 2]];
+	int[][] p4_3 = [[2, 1, 1]];
+	int[][] p4_4 = [[1, 1, 1, 1]];
+	int[][] p5_1 = [[5]];
+	int[][] p5_2 = [[4, 1], [3, 2]];
+	int[][] p5_3 = [[3, 1, 1], [2, 2, 1]];
+	int[][] p5_4 = [[2, 1, 1, 1]];
+	int[][] p5_5 = [[1, 1, 1, 1, 1]];
+	int[][] p11_4 = [[8, 1, 1, 1], [7, 2, 1, 1], [6, 3, 1, 1], [5, 4, 1, 1],
+					 [6, 2, 2, 1], [5, 3, 2, 1], [4, 4, 2, 1], [4, 3, 3, 1],
+					 [5, 2, 2, 2], [4, 3, 2, 2], [3, 3, 3, 2]];
+	assert(equal!equal(integerPartitions(0, 1), p0_1));
+	assert(equal!equal(integerPartitions(1, 1), p1_1));
+	assert(equal!equal(integerPartitions(2, 1), p2_1));
+	assert(equal!equal(integerPartitions(2, 2), p2_2));
+	assert(equal!equal(integerPartitions(3, 1), p3_1));
+	assert(equal!equal(integerPartitions(3, 2), p3_2));
+	assert(equal!equal(integerPartitions(3, 3), p3_3));
+	assert(equal!equal(integerPartitions(4, 1), p4_1));
+	assert(equal!equal(integerPartitions(4, 2), p4_2));
+	assert(equal!equal(integerPartitions(4, 3), p4_3));
+	assert(equal!equal(integerPartitions(4, 4), p4_4));
+	assert(equal!equal(integerPartitions(5, 1), p5_1));
+	assert(equal!equal(integerPartitions(5, 2), p5_2));
+	assert(equal!equal(integerPartitions(5, 3), p5_3));
+	assert(equal!equal(integerPartitions(5, 4), p5_4));
+	assert(equal!equal(integerPartitions(5, 5), p5_5));
+	assert(equal!equal(integerPartitions(11, 4), p11_4));
 }
 
 private struct Word(Range)
@@ -708,31 +857,33 @@ private struct Word(Range)
 		hasLength!Range &&
 		!isInfinite!Range)
 {
-	this(Range alphabet, size_t index, size_t divisor)
+	this(Range alphabet, size_t index, size_t divisor, size_t length)
 	{
 		_alphabet = alphabet;
 		_index = index;
 		_divisor = divisor;
+		_length = length;
 	}
 
 	@property auto front() { return _alphabet[(_index / _divisor) % _alphabet.length]; }
-	@property bool empty() const { return _divisor == 0; }
+	@property bool empty() const { return _length == 0; }
+	@property size_t length() const { return _length; }
 
 	void popFront()
 	{
-		size_t numLetters = _alphabet.length;
-		if (numLetters == 1)
-			_divisor = _index-- == 0 ? 0 : 1;
-		else
-			_divisor /= numLetters;
+		_divisor /= _alphabet.length;
+		--_length;
 	}
+
+	// TODO: opIndex, back, save
 
 	private Range _alphabet;
 	private size_t _index;
 	private size_t _divisor;
+	private size_t _length;
 }
 
-struct Words(Range)
+private struct Words(Range)
 	if (isRandomAccessRange!Range &&
 		hasLength!Range &&
 		!isInfinite!Range)
@@ -743,73 +894,180 @@ struct Words(Range)
 		_alphabet = alphabet.save;
 	}
 
-	@property auto front() { return Word!Range(_alphabet.save, _index, _divisor); }
+	@property auto front() { return Word!Range(_alphabet.save, _index - _offset, _divisor, _wordLength); }
 	@property enum bool empty = false;
 
 	void popFront()
 	{
 		++_index;
-		if (_index >= _divisor * _alphabet.length)
+		if (_index - _offset >= _divisor * _alphabet.length)
+		{
+			_offset = _index;
 			_divisor *= _alphabet.length;
+			++_wordLength;
+		}
 	}
 
 	auto opIndex(size_t index)
 	{
 		// TODO: better algo for finding divisor
 		index += _index;
-		size_t numLetters = _alphabet.length;
+		size_t offset = _offset;
 		size_t divisor = _divisor;
+		size_t numLetters = _alphabet.length;
+		size_t wordLength = _wordLength;
 		if (numLetters != 1)
 		{
 			size_t nextDivisor = divisor * numLetters;
-			size_t maxDivisor = size_t.max / numLetters; // overflow protection
-			while (nextDivisor <= index && divisor <= maxDivisor)
+			while (index - offset >= nextDivisor)
 			{
+				offset += nextDivisor;
 				divisor = nextDivisor;
 				nextDivisor *= numLetters;
+				++wordLength;
 			}
 		}
-		return Word!Range(_alphabet.save, index, divisor);
+		else
+		{
+			wordLength += index;
+		}
+		return Word!Range(_alphabet.save, index - offset, divisor, wordLength);
 	}
 
 	private Range _alphabet;
 	private size_t _index = 0;
 	private size_t _divisor = 1;
+	private size_t _offset = 0;
+	private size_t _wordLength = 1;
 }
 
-Words!Range words(Range)(Range alphabet)
+private struct KWords(Range)
+	if (isRandomAccessRange!Range &&
+		hasLength!Range &&
+		!isInfinite!Range)
 {
-	// TODO: add k-length words
+	this(Range alphabet, size_t k)
+	{
+		assert(!alphabet.empty, "k-words over an empty alphabet not supported.");
+		assert(k > 0, "0-length words not supported");
+
+		size_t numLetters = alphabet.length;
+		_alphabet = alphabet.save;
+		_divisor = numLetters ^^ (k - 1);
+		_length = _divisor * numLetters; // TODO: handle overflow
+		_wordLength = k;
+	}
+
+	@property auto front() { return Word!Range(_alphabet.save, _index, _divisor, _wordLength); }
+	@property bool empty() const { return _length == 0; }
+	@property size_t length() const { return _length; }
+
+	void popFront()
+	{
+		++_index;
+		--_length;
+	}
+
+	auto opIndex(size_t index)
+	{
+		return Word!Range(_alphabet.save, _index + index, _divisor, _wordLength);
+	}
+
+	// TODO: opSlice, save, back, popBack
+
+	private Range _alphabet;
+	private size_t _index = 0;
+	private size_t _divisor = 1;
+	private size_t _length = 0;
+	private size_t _wordLength;
+}
+
+/**
+   Returns an infinite range of all the words over $(D alphabet).
+ */
+auto words(Range)(Range alphabet)
+{
 	return Words!Range(alphabet);
 }
 
 unittest
 {
-	auto base10 = words("0123456789"d);
-	assert(equal!equal(base10.take(200), iota(200).map!(to!dstring)()));
-	assert(equal(base10[0], "0"d));
-	assert(equal(base10[1], "1"d));
-	assert(equal(base10[9999], "9999"d));
-	assert(equal(base10[10000], "10000"d));
-	assert(equal(base10[10001], "10001"d));
-	assert(equal(base10[size_t.max], to!dstring(size_t.max)));
+	auto abc = words("abc"d);
+	auto abc18 = ["a", "b", "c",
+	              "aa", "ab", "ac",
+	              "ba", "bb", "bc",
+	              "ca", "cb", "cc",
+	              "aaa", "aab", "aac",
+	              "aba", "abb", "abc"];
+	assert(equal!equal(abc.take(18), abc18));
+	assert(equal(abc[0], "a"d));
+	assert(equal(abc[1], "b"d));
+	assert(equal(abc[3], "aa"d));
+	assert(equal(abc[3+9], "aaa"d));
+	assert(equal(abc[3+9+27], "aaaa"d));
+	assert(equal(abc[3+9+27+81], "aaaaa"d));
+	assert(equal(abc[3+9+27+81-1], "cccc"d));
 
-	auto base2 = words("01"d);
-	assert(equal!equal(base2.take(8), ["0", "1", "10", "11", "100", "101", "110", "111"]));
-	assert(equal(base2[4294967295u], "11111111111111111111111111111111"));
-	static if (size_t.sizeof == 8)
-		assert(equal(base2[size_t.max], "1111111111111111111111111111111111111111111111111111111111111111"));
+	auto base2 = words([0, 1]);
+	assert(equal(base2[0], [0]));
+	assert(equal(base2[1], [1]));
+	assert(equal(base2[2], [0, 0]));
+	assert(equal(base2[3], [0, 1]));
+	assert(equal(base2[4], [1, 0]));
+	assert(equal(base2[5], [1, 1]));
+	assert(equal(base2[2+4+8+16+32], [0, 0, 0, 0, 0, 0]));
 
 	auto base1 = words("."d);
-	assert(equal!equal(base1.take(4), [".", "..", "...", "...."]));
+	assert(equal!equal(base1.take(5), [".", "..", "...", "....", "....."]));
 	assert(equal(base1[0], "."));
 	assert(equal(base1[1], ".."));
 	assert(equal(base1[2], "..."));
 	assert(equal(base1[3], "...."));
 }
 
+/**
+   Returns a range of all $(D k)-length words over $(D alphabet).
+ */
+KWords!Range words(Range)(Range alphabet, size_t k)
+{
+	return KWords!Range(alphabet, k);
+}
+
+unittest
+{
+	auto abc_1 = ["a", "b", "c"];
+	auto abc_2 = ["aa", "ab", "ac", "ba", "bb", "bc", "ca", "cb", "cc"];
+	auto abc_3 = ["aaa", "aab", "aac", "aba", "abb", "abc", "aca", "acb", "acc",
+				  "baa", "bab", "bac", "bba", "bbb", "bbc", "bca", "bcb", "bcc",
+				  "caa", "cab", "cac", "cba", "cbb", "cbc", "cca", "ccb", "ccc"];
+
+	assert(equal!equal(words("abc"d, 1), abc_1));
+	assert(equal!equal(words("abc"d, 2), abc_2));
+	assert(equal!equal(words("abc"d, 3), abc_3));
+	assert(equal!equal(words(map!(a=>a)("abc"d), 3), abc_3));
+
+	auto base2 = words("01"d, 32);
+	assert(equal(base2[0x0000_0000U], "00000000000000000000000000000000"));
+	assert(equal(base2[0x5555_5555U], "01010101010101010101010101010101"));
+	assert(equal(base2[0xAAAA_AAAAU], "10101010101010101010101010101010"));
+	assert(equal(base2[0xFFFF_FFFFU], "11111111111111111111111111111111"));
+
+	auto base10 = words("0123456789"d, 10);
+	assert(equal(base10[            0U], "0000000000"));
+	assert(equal(base10[  999_999_999U], "0999999999"));
+	assert(equal(base10[1_000_000_000U], "1000000000"));
+	assert(equal(base10[1_234_567_890U], "1234567890"));
+	assert(equal(base10[4_000_000_000U], "4000000000"));
+	assert(equal(base10[uint.max], "4294967295")); // TODO: is this handled correctly?
+
+	assert(equal!equal(words("."d, 1), ["."]));
+	assert(equal!equal(words("."d, 10), [".........."]));
+}
 
 // TODO: belongs in std.order?
+/**
+Colex order
+*/
 bool colexOrder(alias pred = ((a, b) => a < b), Range)(Range lhs, Range rhs)
 	if (isForwardRange!Range &&
 		is(typeof(binaryFun!pred(lhs.front, rhs.front)) : bool))
@@ -852,12 +1110,10 @@ unittest
 
 // WANT:
 // - ordering (lex, colex, grey, fastest)
-// - integer k-partitions
 // - set partitions
-// - combinations
-// - pascal numbers
-// - bell numbers
 // - catalan numbers
+// - combinations
+// - bell numbers
 // - stirling numbers 1st + 2nd
 // - fibonacci
 // - integer compositions
@@ -869,3 +1125,7 @@ unittest
 // - even permutations
 // - non-crossing partitions
 // - range assertions
+// - forward permutations
+
+// - random sampling
+// - ranking/unranking
