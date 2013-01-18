@@ -162,7 +162,54 @@ private immutable ulong[] bellNumbersCache = [ 1UL,
                        4_638_590_332_229_999_353UL ];
 
 /**
-Next permutation.
+   Gets the $(D n)th Catalan number.
+ */
+Int catalanNumber(Int)(uint n)
+{
+	// TODO: overflow
+	if (n < catalanNumberCache.length)
+		return catalanNumberCache[n].to!Int();
+	// TODO: BigInt algorithm
+	// TODO: real number algorithm
+	return 0;
+}
+
+// Cache of all the Catalan numbers below ulong.max
+private immutable ulong[] catalanNumberCache = [ 1UL,
+                                                 1UL,
+                                                 2UL,
+                                                 5UL,
+                                                14UL,
+                                                42UL,
+                                               132UL,
+                                               429UL,
+                                             1_430UL,
+                                             4_862UL,
+                                            16_796UL,
+                                            58_786UL,
+                                           208_012UL,
+                                           742_900UL,
+                                         2_674_440UL,
+                                         9_694_845UL,
+                                        35_357_670UL,
+                                       129_644_790UL,
+                                       477_638_700UL,
+                                     1_767_263_190UL,
+                                     6_564_120_420UL,
+                                    24_466_267_020UL,
+                                    91_482_563_640UL,
+                                   343_059_613_650UL,
+                                 1_289_904_147_324UL,
+                                 4_861_946_401_452UL,
+                                18_367_353_072_152UL,
+                                69_533_550_916_004UL,
+                               263_747_951_750_360UL,
+                             1_002_242_216_651_368UL,
+                             3_814_986_502_092_304UL,
+                            14_544_636_039_226_909UL ];
+
+/**
+   Next permutation.
  */
 bool nextPermutation(alias pred = ((a, b) => a < b), Range)(Range r)
     if (isBidirectionalRange!Range &&
@@ -1253,8 +1300,6 @@ unittest
 
 // WANT:
 // - ordering (lex, colex, grey, fastest)
-// - non-crossing partitions
-// - catalan numbers
 // - set k-partitions
 // - combinations
 // - stirling numbers 1st + 2nd
@@ -1273,3 +1318,4 @@ unittest
 
 // - random sampling
 // - ranking/unranking
+// - non-crossing partitions
