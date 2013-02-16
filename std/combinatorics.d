@@ -303,11 +303,8 @@ private struct Permutations(alias pred = ((a, b) => a < b), Value)
 
 	this(Range)(Range source)
 	{
-		// TODO: better way?
-		auto frontAppender = appender!(Value[])();
-		_front = copy(source.save, frontAppender).data;
-		auto backAppender = appender!(Value[])();
-		_back = copy(source.save, backAppender).data;
+		_front = source.save.to!Value[]();
+		_back = source.save.to!Value[]();
 		_length = countPermutations!(size_t, pred)(_front);
 		previousPermutation(_back);
 		_onLast = equal(_front, _back);
