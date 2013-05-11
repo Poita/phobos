@@ -22,33 +22,30 @@
 # OS can be linux, win32, win32remote, win32wine, osx, or freebsd. If left
 # blank, the system will be determined by using uname
 
+QUIET:=@
+
+OS:=
+uname_S:=$(shell uname -s)
+ifeq (Darwin,$(uname_S))
+	OS:=osx
+endif
+ifeq (Linux,$(uname_S))
+	OS:=linux
+endif
+ifeq (FreeBSD,$(uname_S))
+	OS:=freebsd
+endif
+ifeq (OpenBSD,$(uname_S))
+	OS:=openbsd
+endif
+ifeq (Solaris,$(uname_S))
+	OS:=solaris
+endif
+ifeq (SunOS,$(uname_S))
+	OS:=solaris
+endif
 ifeq (,$(OS))
-    OS:=$(shell uname)
-    ifeq (Darwin,$(OS))
-        OS:=osx
-    else
-        ifeq (Linux,$(OS))
-            OS:=linux
-        else
-            ifeq (FreeBSD,$(OS))
-                OS:=freebsd
-            else
-                ifeq (OpenBSD,$(OS))
-                    TARGET=OPENBSD
-                else
-                    ifeq (Solaris,$(OS))
-                        TARGET=SOLARIS
-                    else
-                        ifeq (SunOS,$(OS))
-                            TARGET=SOLARIS
-                        else
-                            $(error Unrecognized or unsupported OS for uname: $(OS))
-                        endif
-                    endif
-                endif
-            endif
-        endif
-    endif
+	$(error Unrecognized or unsupported OS for uname: $(uname_S))
 endif
 
 # For now, 32 bit is the default model
@@ -83,6 +80,7 @@ MAKEFILE:=$(lastword $(MAKEFILE_LIST))
 # Set DRUNTIME name and full path
 ifeq (,$(findstring win,$(OS)))
 	DRUNTIME = $(DRUNTIME_PATH)/lib/libdruntime-$(OS)$(MODEL).a
+	DRUNTIMESO = $(DRUNTIME_PATH)/lib/libdruntime-$(OS)$(MODEL)so.a
 else
 	DRUNTIME = $(DRUNTIME_PATH)/lib/druntime.lib
 endif
@@ -154,6 +152,7 @@ DDOC=$(DMD)
 # Set LIB, the ultimate target
 ifeq (,$(findstring win,$(OS)))
 	LIB = $(ROOT)/libphobos2.a
+	LIBSO = $(ROOT)/libphobos2so.so
 else
 	LIB = $(ROOT)/phobos.lib
 endif
@@ -162,12 +161,12 @@ endif
 MAIN = $(ROOT)/emptymain.d
 
 # Stuff in std/
-STD_MODULES = $(addprefix std/, combinatorics algorithm array ascii base64 bigint	    \
-        bitmanip compiler complex concurrency container conv \
-        cpuid cstream ctype csv datetime demangle encoding exception	\
+STD_MODULES = $(addprefix std/, combinatorics algorithm array ascii base64 bigint		\
+        bitmanip compiler complex concurrency container conv		\
+        cstream csv datetime demangle encoding exception	\
         file format functional getopt json math mathspecial md5	\
-        metastrings mmfile numeric outbuffer parallelism path perf		\
-        process random range regex regexp signals socket socketstream	\
+        metastrings mmfile numeric outbuffer parallelism path		\
+        process random range regex signals socket socketstream	\
         stdint stdio stdiobase stream string syserror system traits		\
         typecons typetuple uni uri utf uuid variant xml zip zlib)
 
@@ -232,8 +231,14 @@ ifeq ($(BUILD),)
 # targets. BUILD is not defined in user runs, only by recursive
 # self-invocations. So the targets in this branch are accessible to
 # end users.
+ifeq (linux,$(OS))
+release :
+	$(MAKE) --no-print-directory -f $(MAKEFILE) OS=$(OS) MODEL=$(MODEL) BUILD=release PIC=1 dll
+	$(MAKE) --no-print-directory -f $(MAKEFILE) OS=$(OS) MODEL=$(MODEL) BUILD=release
+else
 release :
 	$(MAKE) --no-print-directory -f $(MAKEFILE) OS=$(OS) MODEL=$(MODEL) BUILD=release
+endif
 debug :
 	$(MAKE) --no-print-directory -f $(MAKEFILE) OS=$(OS) MODEL=$(MODEL) BUILD=debug
 unittest :
@@ -256,6 +261,11 @@ $(ROOT)/%$(DOTOBJ) : %.c
 $(LIB) : $(OBJS) $(ALL_D_FILES) $(DRUNTIME)
 	$(DMD) $(DFLAGS) -lib -of$@ $(DRUNTIME) $(D_FILES) $(OBJS)
 
+dll : $(LIBSO)
+
+$(LIBSO): $(OBJS) $(ALL_D_FILES) $(DRUNTIME)
+	$(DMD) $(DFLAGS) -shared -debuglib= -defaultlib= -of$@ $(DRUNTIMESO) $(D_FILES) $(OBJS)
+
 ifeq (osx,$(OS))
 # Build fat library that combines the 32 bit and the 64 bit libraries
 libphobos2.a : generated/osx/release/32/libphobos2.a generated/osx/release/64/libphobos2.a
@@ -267,12 +277,12 @@ $(addprefix $(ROOT)/unittest/,$(DISABLED_TESTS)) :
 
 $(ROOT)/unittest/%$(DOTEXE) : %.d $(LIB) $(ROOT)/emptymain.d
 	@echo Testing $@
-	@$(DMD) $(DFLAGS) -unittest $(LINKOPTS) $(subst /,$(PATHSEP),"-of$@") \
+	$(QUIET)$(DMD) $(DFLAGS) -unittest $(LINKOPTS) $(subst /,$(PATHSEP),"-of$@") \
 	 	$(ROOT)/emptymain.d $<
 # make the file very old so it builds and runs again if it fails
 	@touch -t 197001230123 $@
 # run unittest in its own directory
-	@$(RUN) $@
+	$(QUIET)$(RUN) $@
 # succeeded, render the file new again
 	@touch $@
 
