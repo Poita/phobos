@@ -146,7 +146,9 @@ ifneq ($(USE_IMPORTC),1)
 	else # Posix
 		CFLAGS := $(MODEL_FLAG) -fPIC -std=c11 $(if $(findstring $(BUILD),debug),-g,-O3)
 		ifeq (osx64,$(OS)$(MODEL))
-			CFLAGS += --target=x86_64-darwin-apple  # ARM cpu is not supported by dmd
+			ifneq (aarch64,$(ARCH))
+				CFLAGS += --target=x86_64-darwin-apple  # match dmd's x86_64 output on any host
+			endif
 		endif
 	endif
 endif
