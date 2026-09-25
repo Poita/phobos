@@ -35,6 +35,18 @@ version (LoongArch64)   version = LoongArch_Any;
 version (D_InlineAsm_X86)    version = InlineAsm_X86_Any;
 version (D_InlineAsm_X86_64) version = InlineAsm_X86_Any;
 
+// DMD has no AArch64 inline assembler; druntime provides the register accesses
+version (DigitalMars) version (AArch64) version = DMD_AArch64;
+
+version (DMD_AArch64)
+private extern (C) nothrow @nogc @trusted
+{
+    pure uint _d_aarch64_get_fpcr();
+    void _d_aarch64_set_fpcr(uint value);
+    pure uint _d_aarch64_get_fpsr();
+    void _d_aarch64_set_fpsr(uint value);
+}
+
 version (X86_64) version = StaticallyHaveSSE;
 version (X86) version (OSX) version = StaticallyHaveSSE;
 
@@ -182,6 +194,10 @@ private:
         {
             assert(false, "Not yet supported.");
         }
+        else version (DMD_AArch64)
+        {
+            return _d_aarch64_get_fpsr() & EXCEPTIONS_MASK;
+        }
         else version (RISCV_Any)
         {
             uint result = void;
@@ -221,6 +237,10 @@ private:
                 mxcsr &= ~EXCEPTIONS_MASK;
                 asm nothrow @nogc { ldmxcsr mxcsr; }
             }
+        }
+        else version (DMD_AArch64)
+        {
+            _d_aarch64_set_fpsr(_d_aarch64_get_fpsr() & ~EXCEPTIONS_MASK);
         }
         else version (RISCV_Any)
         {
@@ -932,6 +952,10 @@ private:
             }
             return cont;
         }
+        else version (DMD_AArch64)
+        {
+            return _d_aarch64_get_fpcr();
+        }
         else version (RISCV_Any)
         {
             ControlState cont;
@@ -984,6 +1008,10 @@ private:
 
                 asm nothrow @nogc { ldmxcsr mxcsr; }
             }
+        }
+        else version (DMD_AArch64)
+        {
+            _d_aarch64_set_fpcr(newState);
         }
         else version (RISCV_Any)
         {
