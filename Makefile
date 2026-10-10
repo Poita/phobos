@@ -271,7 +271,7 @@ EXTRA_MODULES_INTERNAL := $(addprefix std/, \
 	$(addprefix internal/, \
 		cstring memory digest/sha_SSSE3 \
 		entropy retry \
-		$(addprefix math/, biguintcore biguintnoasm biguintx86	\
+		$(addprefix math/, biguintcore biguintnoasm biguintx86 decimaltofloat \
 						   errorfunction gammafunction ) \
 		scopebuffer test/dummyrange test/range \
 		test/sumtype_example_overloads \

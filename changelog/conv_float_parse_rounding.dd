@@ -1,0 +1,21 @@
+`std.conv.parse` now converts decimal strings to `float` and `double` with correct rounding
+
+$(REF parse, std, conv) and $(REF to, std, conv) now return the `float` or
+`double` nearest to a decimal input, with ties rounded to even, matching
+`strtod` and the floating-point parsers of other languages. Previously the
+result could be off by one or two units in the last place, on all platforms
+and for about half of all inputs on platforms where `real` is 64 bits wide,
+such as AArch64 with LDC. $(MREF std, json) parses numbers through
+`std.conv` and is fixed too. `real` is parsed this way when it has the same
+format as `double`.
+
+-------
+import std.conv : to;
+
+assert(to!double("0.3") == 0.3);
+assert(to!double("1.7976931348623157e308") == double.max);
+-------
+
+Decimal inputs too small to be represented now parse as zero on all
+platforms, as hexadecimal inputs already did, instead of throwing a
+$(REF ConvException, std, conv) where `real` is 64 bits wide.

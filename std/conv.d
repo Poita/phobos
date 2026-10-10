@@ -3315,6 +3315,35 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
     ulong msscale = 1;
     bool sawDigits;
 
+    // Decimal input for float and double (and real when it is a double) is
+    // converted exactly, rounding to nearest with ties to even. Once msdec is
+    // full, every digit is also kept in decimalDigits, which is allocated only
+    // for such long inputs.
+    import std.internal.math.decimaltofloat : DecimalDigits, decimalToFloat;
+    import std.traits : Unqual;
+    static if (is(Unqual!Target == float))
+        alias ExactTarget = float;
+    else static if (is(Unqual!Target == double) ||
+                    (is(Unqual!Target == real) && real.mant_dig == double.mant_dig &&
+                     real.max_exp == double.max_exp && real.min_exp == double.min_exp))
+        alias ExactTarget = double;
+    enum exactDecimal = is(ExactTarget);
+    static if (exactDecimal)
+    {
+        DecimalDigits* decimalDigits;
+        long droppedDigits = 0;
+
+        void keepDigit(uint digit)
+        {
+            if (decimalDigits is null)
+            {
+                decimalDigits = new DecimalDigits;
+                decimalDigits.setInteger(msdec);
+            }
+            decimalDigits.appendDigit(digit);
+        }
+    }
+
     enum { hex, decimal }
 
     // sets msdec, lsdec/msscale, and sawDigits by parsing the mantissa digits
@@ -3363,11 +3392,18 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
                 }
                 else if (msscale < msscaleMax)
                 {
+                    static if (FloatFormat == decimal && exactDecimal)
+                        keepDigit(i);
                     lsdec = lsdec * base + i;
                     msscale *= base;
                 }
                 else
                 {
+                    static if (FloatFormat == decimal && exactDecimal)
+                    {
+                        keepDigit(i);
+                        ++droppedDigits;
+                    }
                     exp += expIter;
                 }
                 exp -= dot;
@@ -3448,6 +3484,20 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
 
         // Exponent is power of 2, not power of 10
         ldval = ldexp(ldval,exp);
+    }
+    else if (exactDecimal)
+    {
+        static if (exactDecimal)
+        {
+            // exp counts each dropped digit as a power of ten
+            if (decimalDigits !is null)
+            {
+                decimalDigits.scaleByPowerOf10(exp - droppedDigits);
+                ldval = decimalToFloat!ExactTarget(*decimalDigits);
+            }
+            else
+                ldval = decimalToFloat!ExactTarget(msdec, exp);
+        }
     }
     else if (ldval)
     {
@@ -3845,6 +3895,68 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
     foreach (s; ssKO)
         assertThrown!ConvException(parse!double(s));
 }
+
+// Decimal strings convert to the nearest float/double, ties to even
+@safe pure unittest
+{
+    static auto bitsOf(T)(T x) @trusted
+    {
+        static if (is(T == float))
+            return *cast(uint*) &x;
+        else
+            return *cast(ulong*) &x;
+    }
+
+    static void check(T, B)(string s, B expected)
+    {
+        auto src = s;
+        auto bits = bitsOf(parse!T(src));
+        assert(src.length == 0, s);
+        assert(bits == expected, s);
+    }
+
+    check!double("0.3", 0x3FD3333333333333);
+    check!double("0.6", 0x3FE3333333333333);
+    check!double("1.448997445238699", 0x3FF72F17F1F49AAD);
+    check!double("62062.797334370909695", 0x40EE4DD983C35EE1);
+    check!double("66.4e-80", 0x2FB3AECC24F9E195);
+    check!double("1e23", 0x44B52D02C7E14AF6);
+    check!double("1.7976931348623157e308", 0x7FEFFFFFFFFFFFFF);
+    check!double("1.7976931348623158e308", 0x7FEFFFFFFFFFFFFF);
+    check!double("2.2250738585072011e-308", 0x000FFFFFFFFFFFFF);
+    check!double("2.2250738585072014e-308", 0x0010000000000000);
+    check!double("4.9406564584124654e-324", 0x0000000000000001);
+    check!double("2.4703282292062328e-324", 0x0000000000000001);
+    check!double("2.4703282292062327e-324", 0x0000000000000000);
+    check!double("1e-400", 0x0000000000000000);
+    check!double("-1e-400", 0x8000000000000000);
+    check!double("0.000000000000000000000000000000000000000000001e45", 0x3FF0000000000000);
+    // ties round to even
+    check!double("9007199254740993", 0x4340000000000000);
+    check!double("9007199254740995", 0x4340000000000002);
+    check!double("1.00000000000000011102230246251565404236316680908203125", 0x3FF0000000000000);
+    check!double("1.00000000000000011102230246251565404236316680908203125000000000000000000001",
+        0x3FF0000000000001);
+    check!double("1.00000000000000033306690738754696212708950042724609375", 0x3FF0000000000002);
+
+    check!float("0.1", 0x3DCCCCCD);
+    check!float("0.3", 0x3E99999A);
+    check!float("16777217", 0x4B800000);
+    check!float("16777219", 0x4B800002);
+    check!float("3.4028235e38", 0x7F7FFFFF);
+    check!float("1.4e-45", 0x00000001);
+    check!float("1.17549435e-38", 0x00800000);
+    check!float("7.038531e-26", 0x15AE43FD);
+
+    // more significant digits than are stored exactly; the tail decides the rounding
+    char[] longInput = "1.00000000000000011102230246251565404236316680908203125".dup;
+    longInput ~= new char[](2000);
+    longInput[$ - 2000 .. $] = '0';
+    check!double(longInput.idup, 0x3FF0000000000000);
+    longInput[$ - 1] = '1';
+    check!double(longInput.idup, 0x3FF0000000000001);
+}
+
 
 @safe unittest // https://issues.dlang.org/show_bug.cgi?id=22637
 {
