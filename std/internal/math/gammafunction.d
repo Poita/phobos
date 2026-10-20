@@ -291,22 +291,27 @@ real igammaTemmeLarge(real a, real x, bool compl)
 @safe unittest
 {
     // Values were generated using scipy, which restricts values to double precision.
-    assert(feqrel(igammaTemmeLarge(25.0, 25.0, true), 0.47339_84685_56349_37L) >= double.mant_dig);
-    assert(feqrel(igammaTemmeLarge(25.0, 26.0, true), 0.39592_65699_99828_5L) >= double.mant_dig);
-    assert(feqrel(igammaTemmeLarge(26.0, 25.0, true), 0.55292_14200_24414_8L) >= double.mant_dig);
+    // Where real is double too, the computation has no guard bits and loses a few,
+    // and more for large a, where sigma - log1p(sigma) cancels.
+    enum extended = real.mant_dig > double.mant_dig;
+    enum full = extended ? double.mant_dig : double.mant_dig - 4;
+    enum large = extended ? double.mant_dig : double.mant_dig - 12;
+    assert(feqrel(igammaTemmeLarge(25.0, 25.0, true), 0.47339_84685_56349_37L) >= full);
+    assert(feqrel(igammaTemmeLarge(25.0, 26.0, true), 0.39592_65699_99828_5L) >= full);
+    assert(feqrel(igammaTemmeLarge(26.0, 25.0, true), 0.55292_14200_24414_8L) >= full);
 
-    assert(feqrel(igammaTemmeLarge(25.0, 25.0, false), 0.52660_15314_43650_6L) >= double.mant_dig);
-    assert(feqrel(igammaTemmeLarge(26.0, 25.0, false), 0.44707_85799_75585_2L) >= double.mant_dig);
+    assert(feqrel(igammaTemmeLarge(25.0, 25.0, false), 0.52660_15314_43650_6L) >= full);
+    assert(feqrel(igammaTemmeLarge(26.0, 25.0, false), 0.44707_85799_75585_2L) >= full);
 
     assert(
         feqrel(igammaTemmeLarge(30.0L,31.0L,true), 1.0L-igammaTemmeLarge(30.0L,31.0L,false))
-        >= real.mant_dig - 1);
+        >= (extended ? real.mant_dig - 1 : real.mant_dig - 4));
 
     assert(feqrel(igammaTemmeLarge(1e9, 1.1e9, false), 1.0) >= double.mant_dig);
     assert(feqrel(igammaTemmeLarge(1.1e9, 1e9, false), 0.0) >= double.mant_dig);
 
     assert(
-        feqrel(igammaTemmeLarge(1e6, 1e6 + 1.0, true), 0.49946_80772_57932_46L) >= double.mant_dig);
+        feqrel(igammaTemmeLarge(1e6, 1e6 + 1.0, true), 0.49946_80772_57932_46L) >= large);
 }
 
 } // private
