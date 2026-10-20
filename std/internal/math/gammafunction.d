@@ -757,6 +757,12 @@ real beta(in real x, in real y)
 
     if (!isNaN(res)) return res;
 
+    // Near the origin, Γ(x) is 1/x to within rounding, so B = sum/(smaller*larger),
+    // which is computed in an order that does not overflow before the result does.
+    if (fabs(smaller) < real.epsilon && fabs(larger) < real.epsilon &&
+        smaller != 0 && larger != 0 && sum != 0)
+        return sum / smaller / larger;
+
     // in a quadrant of the (smaller,larger) cartesian plane
     const inQ1 = cmp(smaller, +0.0L) >= 0;
     const inQ2 = !inQ1 && cmp(larger, +0.0L) >= 0;
