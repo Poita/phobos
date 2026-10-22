@@ -93,19 +93,23 @@ real ceil(real x) @trusted pure nothrow @nogc
         if (y < x)
             y += 1.0;
 
-        return y;
+        // a value between -1 and 0 rounds up to -0.0
+        import std.math.traits : copysign;
+        return y == 0 ? copysign(y, x) : y;
     }
 }
 
 ///
 @safe pure nothrow @nogc unittest
 {
-    import std.math.traits : isNaN;
+    import std.math.traits : isNaN, signbit;
 
     assert(ceil(+123.456L) == +124);
     assert(ceil(-123.456L) == -123);
     assert(ceil(-1.234L) == -1);
     assert(ceil(-0.123L) == 0);
+    assert(signbit(ceil(-0.123L)));
+    assert(!signbit(ceil(+0.0L)) && signbit(ceil(-0.0L)));
     assert(ceil(0.0L) == 0);
     assert(ceil(+0.123L) == 1);
     assert(ceil(+1.234L) == 2);
@@ -127,17 +131,21 @@ double ceil(double x) @trusted pure nothrow @nogc
     if (y < x)
         y += 1.0;
 
-    return y;
+    // a value between -1 and 0 rounds up to -0.0
+    import std.math.traits : copysign;
+    return y == 0 ? copysign(y, x) : y;
 }
 
 @safe pure nothrow @nogc unittest
 {
-    import std.math.traits : isNaN;
+    import std.math.traits : isNaN, signbit;
 
     assert(ceil(+123.456) == +124);
     assert(ceil(-123.456) == -123);
     assert(ceil(-1.234) == -1);
     assert(ceil(-0.123) == 0);
+    assert(signbit(ceil(-0.123)));
+    assert(!signbit(ceil(+0.0)) && signbit(ceil(-0.0)));
     assert(ceil(0.0) == 0);
     assert(ceil(+0.123) == 1);
     assert(ceil(+1.234) == 2);
@@ -159,17 +167,21 @@ float ceil(float x) @trusted pure nothrow @nogc
     if (y < x)
         y += 1.0;
 
-    return y;
+    // a value between -1 and 0 rounds up to -0.0
+    import std.math.traits : copysign;
+    return y == 0 ? copysign(y, x) : y;
 }
 
 @safe pure nothrow @nogc unittest
 {
-    import std.math.traits : isNaN;
+    import std.math.traits : isNaN, signbit;
 
     assert(ceil(+123.456f) == +124);
     assert(ceil(-123.456f) == -123);
     assert(ceil(-1.234f) == -1);
     assert(ceil(-0.123f) == 0);
+    assert(signbit(ceil(-0.123f)));
+    assert(!signbit(ceil(+0.0f)) && signbit(ceil(-0.0f)));
     assert(ceil(0.0f) == 0);
     assert(ceil(+0.123f) == 1);
     assert(ceil(+1.234f) == 2);
