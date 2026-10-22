@@ -773,18 +773,21 @@ real fdim(real x, real y) @safe pure nothrow @nogc
 /**
  * Returns the larger of `x` and `y`.
  *
- * If one of the arguments is a `NaN`, the other is returned.
+ * If one of the arguments is a `NaN`, the other is returned. +0.0 is larger
+ * than -0.0.
  *
  * See_Also: $(REF max, std,algorithm,comparison) is faster because it does not perform the `isNaN` test.
  */
 F fmax(F)(const F x, const F y) @safe pure nothrow @nogc
 if (__traits(isFloating, F))
 {
-    import std.math.traits : isNaN;
+    import std.math.traits : isNaN, signbit;
 
     // Do the more predictable test first. Generates 0 branches with ldc and 1 branch with gdc.
     // See https://godbolt.org/z/erxrW9
     if (isNaN(x)) return y;
+    // equal values differ only in the sign of a zero, and +0.0 is the larger
+    if (y == x) return signbit(x) ? y : x;
     return y > x ? y : x;
 }
 
@@ -802,21 +805,37 @@ if (__traits(isFloating, F))
     }
 }
 
+// +0.0 is larger than -0.0, in either order
+@safe pure nothrow @nogc unittest
+{
+    import std.math.traits : signbit;
+    import std.meta : AliasSeq;
+    static foreach (F; AliasSeq!(float, double, real))
+    {
+        assert(!signbit(fmax(F(-0.0), F(0.0))));
+        assert(!signbit(fmax(F(0.0), F(-0.0))));
+        assert(signbit(fmax(F(-0.0), F(-0.0))));
+    }
+}
+
 /**
  * Returns the smaller of `x` and `y`.
  *
- * If one of the arguments is a `NaN`, the other is returned.
+ * If one of the arguments is a `NaN`, the other is returned. -0.0 is smaller
+ * than +0.0.
  *
  * See_Also: $(REF min, std,algorithm,comparison) is faster because it does not perform the `isNaN` test.
  */
 F fmin(F)(const F x, const F y) @safe pure nothrow @nogc
 if (__traits(isFloating, F))
 {
-    import std.math.traits : isNaN;
+    import std.math.traits : isNaN, signbit;
 
     // Do the more predictable test first. Generates 0 branches with ldc and 1 branch with gdc.
     // See https://godbolt.org/z/erxrW9
     if (isNaN(x)) return y;
+    // equal values differ only in the sign of a zero, and -0.0 is the smaller
+    if (y == x) return signbit(x) ? x : y;
     return y < x ? y : x;
 }
 
@@ -831,6 +850,19 @@ if (__traits(isFloating, F))
         assert(fmin(F.infinity, F(2.0)) == 2.0);
         assert(fmin(F.nan, F(2.0)) == 2.0);
         assert(fmin(F(2.0), F.nan) == 2.0);
+    }
+}
+
+// -0.0 is smaller than +0.0, in either order
+@safe pure nothrow @nogc unittest
+{
+    import std.math.traits : signbit;
+    import std.meta : AliasSeq;
+    static foreach (F; AliasSeq!(float, double, real))
+    {
+        assert(signbit(fmin(F(-0.0), F(0.0))));
+        assert(signbit(fmin(F(0.0), F(-0.0))));
+        assert(!signbit(fmin(F(0.0), F(0.0))));
     }
 }
 
