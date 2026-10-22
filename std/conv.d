@@ -3187,13 +3187,6 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
             source = source[$ - p.length .. $];
     }
 
-    static immutable real[14] negtab =
-        [ 1e-4096L,1e-2048L,1e-1024L,1e-512L,1e-256L,1e-128L,1e-64L,1e-32L,
-                1e-16L,1e-8L,1e-4L,1e-2L,1e-1L,1.0L ];
-    static immutable real[13] postab =
-        [ 1e+4096L,1e+2048L,1e+1024L,1e+512L,1e+256L,1e+128L,1e+64L,1e+32L,
-                1e+16L,1e+8L,1e+4L,1e+2L,1e+1L ];
-
     ConvException bailOut()(string msg = null, string fn = __FILE__, size_t ln = __LINE__)
     {
         if (msg == null)
@@ -3309,6 +3302,13 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
      */
 
     real ldval = 0.0;
+    // the decimal significand's digits, without leading zeros, and its power of ten
+    ubyte[40] decSmall;                 // holds the digits while they fit
+    ubyte[] decHeap;                    // then this does
+    size_t decLen;
+    long decExp = 0;
+    bool decSticky = false;             // nonzero digits past maxDecDigits
+    enum maxDecDigits = DecimalToFloat.maxDigits;
     char dot = 0;                        /* if decimal point has been seen */
     int exp = 0;
     ulong msdec = 0, lsdec = 0;
@@ -3355,6 +3355,34 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
                 sawDigits = true;        /* must have at least 1 digit   */
 
                 i = convertDigit(i);
+                static if (FloatFormat == decimal)
+                {
+                    if (i != 0 || decLen)
+                    {
+                        if (decLen < maxDecDigits)
+                        {
+                            if (decLen < decSmall.length)
+                                decSmall[decLen] = cast(ubyte) i;
+                            else
+                            {
+                                if (!decHeap.length)
+                                    decHeap = decSmall[].dup;
+                                decHeap ~= cast(ubyte) i;
+                            }
+                            ++decLen;
+                            if (dot)
+                                --decExp;
+                        }
+                        else
+                        {
+                            decSticky |= i != 0;
+                            if (!dot)
+                                ++decExp;
+                        }
+                    }
+                    else if (dot)
+                        --decExp;
+                }
 
                 if (msdec < (ulong.max - base)/base)
                 {
@@ -3436,46 +3464,40 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
             sawDigits = true;
         }
         exp += (sexp) ? -e : e;
+        decExp += (sexp) ? -e : e;
         enforce(sawDigits, new ConvException("No digits seen."));
     }
 
+    if (!isHex)
+    {
+        Target result = 0;
+        scope const(ubyte)[] decDigits = decHeap.length ? decHeap : decSmall[0 .. decLen];
+        if (decLen)
+        {
+            result = DecimalToFloat.convert!Target(decDigits, decExp, decSticky);
+            // underflow is an error only where the value is below every real
+            if (result == 0 && DecimalToFloat.convert!real(decDigits, decExp, decSticky) == 0)
+                throw new ConvException("Range error");
+        }
+        if (sign)
+            result = -result;
+
+        import std.math.traits : isFinite;
+        enforce(isFinite(result), new ConvException("Range error"));
+
+        advanceSource();
+        static if (doCount)
+            return tuple!("data", "count")(result, count);
+        else
+            return result;
+    }
+
+    // hexadecimal: the exponent is a power of 2
+    import core.math : ldexp;
     ldval = msdec;
     if (msscale != 1)               /* if stuff was accumulated in lsdec */
         ldval = ldval * msscale + lsdec;
-    if (isHex)
-    {
-        import core.math : ldexp;
-
-        // Exponent is power of 2, not power of 10
-        ldval = ldexp(ldval,exp);
-    }
-    else if (ldval)
-    {
-        uint u = 0;
-        int pow = 4096;
-
-        while (exp > 0)
-        {
-            while (exp >= pow)
-            {
-                ldval *= postab[u];
-                exp -= pow;
-            }
-            pow >>= 1;
-            u++;
-        }
-        while (exp < 0)
-        {
-            while (exp <= -pow)
-            {
-                ldval *= negtab[u];
-                enforce(ldval != 0, new ConvException("Range error"));
-                exp += pow;
-            }
-            pow >>= 1;
-            u++;
-        }
-    }
+    ldval = ldexp(ldval, exp);
 
     Target result = cast(Target) (sign ? -ldval : ldval);
 
@@ -3494,6 +3516,53 @@ if (isFloatingPoint!Target && !is(Target == enum) &&
     }
 }
 
+
+// Decimal input converts to the nearest value, ties to even, at run time and at compile time
+@safe unittest
+{
+    static ulong dbits(double d) @trusted { return *cast(ulong*) &d; }
+    static uint fbits(float f) @trusted { return *cast(uint*) &f; }
+
+    static immutable string[] ds = [
+        "8306.749", "6606.94545", "7979.3259", "4073.72858",
+        "72238.386486753e-20", "4563.763656851e-4", "0.1",
+        "2.2250738585072011e-308", "4.9406564584124654e-324", "2.4703282292062328e-324",
+        "1.7976931348623157e308", "9007199254740993", "0.30000000000000004441",
+        "123456789012345678901234567890e-10",
+        "0.000000000000000000000000000000000000000000000000000000000000000000001234567",
+    ];
+    static immutable ulong[] dexpect = [
+        0x40c0395fdf3b645a, 0x40b9cef20902de01, 0x40bf2b536e2eb1c4, 0x40afd3750870110a,
+        0x3cca06d0acf4a784, 0x3fdd354537523ad6, 0x3fb999999999999a,
+        0x000fffffffffffff, 0x0000000000000001, 0x0000000000000001,
+        0x7fefffffffffffff, 0x4340000000000000, 0x3fd3333333333334,
+        0x43e56a95319d63e1,
+        0x31a10a9508778633,
+    ];
+    static immutable string[] fs = [
+        "1.00000005960464477539", "1.0000000596046448", "1.00000005960464477540", "8306.749",
+        "3.4028235e38", "1.4e-45", "7.006492321624086e-46", "0.1", "16777217", "0.3333333333333333",
+    ];
+    static immutable uint[] fexpect = [
+        0x3f800000, 0x3f800001, 0x3f800001, 0x4601caff,
+        0x7f7fffff, 0x00000001, 0x00000001, 0x3dcccccd, 0x4b800000, 0x3eaaaaab,
+    ];
+
+    foreach (i, str; ds)
+    {
+        assert(dbits(to!double(str)) == dexpect[i], str);
+        assert(dbits(-to!double("-" ~ str)) == dexpect[i], str);
+    }
+    foreach (i, str; fs)
+        assert(fbits(to!float(str)) == fexpect[i], str);
+
+    enum double[] cd = () { double[] r; foreach (str; ds) r ~= to!double(str); return r; }();
+    foreach (i, d; cd)
+        assert(dbits(d) == dexpect[i], ds[i]);
+    enum float[] cf = () { float[] r; foreach (str; fs) r ~= to!float(str); return r; }();
+    foreach (i, f; cf)
+        assert(fbits(f) == fexpect[i], fs[i]);
+}
 
 ///
 @safe unittest
@@ -6431,4 +6500,497 @@ if (T.sizeof <= S.sizeof)
     uint n;
 
     assert(!__traits(compiles, n.bitCast!ulong));
+}
+
+/* Correctly rounded conversion of a decimal significand and power of ten to a
+ * floating point type, with integer arithmetic only, so it gives the same
+ * result at run time and in CTFE
+ */
+private struct DecimalToFloat
+{
+    /* Digits kept: enough that the ones past them, as a sticky bit, cannot
+     * change the rounding of any format up to quadruple precision
+     */
+    enum maxDigits = 12_000;
+
+    /* Unsigned integer, little endian 32 bit limbs, no high zero limbs: in a
+     * fixed buffer of cap limbs, or on the GC heap for cap 0
+     */
+    static struct Big(size_t cap)
+    {
+        static if (cap)
+        {
+            uint[cap] buf;
+            size_t len;
+            inout(uint)[] d() inout return @safe pure nothrow @nogc { return buf[0 .. len]; }
+            void setLength(size_t n) @safe pure nothrow @nogc
+            {
+                assert(n <= cap);
+                buf[len .. (n > len ? n : len)] = 0;
+                len = n;
+            }
+        }
+        else
+        {
+            uint[] limbs;
+            inout(uint)[] d() inout return @safe pure nothrow @nogc { return limbs; }
+            void setLength(size_t n) @safe pure nothrow
+            {
+                const old = limbs.length;
+                limbs.length = n;
+                if (n > old)
+                    limbs[old .. n] = 0;
+            }
+        }
+
+        // a copy that shares no limbs with this
+        Big dup() const @safe pure nothrow
+        {
+            Big r;
+            r.setLength(d.length);
+            r.d[] = d[];
+            return r;
+        }
+
+        void fromDigits(scope const(ubyte)[] digits) @safe pure nothrow
+        {
+            setLength(0);
+            size_t i = 0;
+            // 9 digits at a time
+            while (i < digits.length)
+            {
+                uint chunk = 0, mul = 1;
+                foreach (k; 0 .. 9)
+                {
+                    if (i == digits.length)
+                        break;
+                    chunk = chunk * 10 + digits[i++];
+                    mul *= 10;
+                }
+                mulAdd(mul, chunk);
+            }
+        }
+
+        void mulAdd(uint m, uint a) @safe pure nothrow
+        {
+            ulong carry = a;
+            foreach (ref x; d)
+            {
+                const t = cast(ulong) x * m + carry;
+                x = cast(uint) t;
+                carry = t >> 32;
+            }
+            if (carry)
+            {
+                setLength(d.length + 1);
+                d[$ - 1] = cast(uint) carry;
+            }
+        }
+
+        void mulPow5(ulong n) @safe pure nothrow
+        {
+            for (; n >= 13; n -= 13)
+                mulAdd(1_220_703_125, 0);       // 5^13
+            uint m = 1;
+            foreach (k; 0 .. n)
+                m *= 5;
+            if (m != 1)
+                mulAdd(m, 0);
+        }
+
+        size_t bitLength() const @safe pure nothrow @nogc
+        {
+            if (!d.length)
+                return 0;
+            uint top = d[$ - 1];
+            size_t n = 0;
+            while (top)
+            {
+                ++n;
+                top >>= 1;
+            }
+            return (d.length - 1) * 32 + n;
+        }
+
+        bool bit(size_t i) const @safe pure nothrow @nogc
+        {
+            const w = i / 32;
+            return w < d.length && ((d[w] >> (i % 32)) & 1);
+        }
+
+        // whether any bit below i is set
+        bool anyBelow(size_t i) const @safe pure nothrow @nogc
+        {
+            const w = i / 32;
+            foreach (k; 0 .. (w < d.length ? w : d.length))
+                if (d[k])
+                    return true;
+            return w < d.length && (d[w] & ((1u << (i % 32)) - 1)) != 0;
+        }
+
+        // this <<= n
+        void shl(size_t n) @safe pure nothrow
+        {
+            if (!d.length)
+                return;
+            const w = n / 32, b = n % 32;
+            const old = d.length;
+            setLength(old + w + 1);
+            auto x = d;
+            foreach_reverse (k; 0 .. old)
+            {
+                const v = x[k];
+                x[k] = 0;
+                x[k + w + 1] |= b ? v >> (32 - b) : 0;
+                x[k + w] |= v << b;
+            }
+            trim();
+        }
+
+        // the 64 bits from bit k up, which hold all the bits above k
+        ulong top64(size_t k) const @safe pure nothrow @nogc
+        {
+            ulong v = 0;
+            foreach (i; 0 .. 3)
+            {
+                const w = k / 32 + i;
+                const long sh = cast(long) i * 32 - cast(long)(k % 32);
+                if (w < d.length && sh < 64)
+                {
+                    v |= sh >= 0 ? cast(ulong) d[w] << sh : cast(ulong) d[w] >> -sh;
+                }
+            }
+            return v;
+        }
+
+        // this >> k, which is less than 2^^128
+        auto top128(size_t k) const @safe pure nothrow @nogc
+        {
+            import core.int128 : Cent;
+            return Cent(top64(k), top64(k + 64));
+        }
+
+        // this *= m
+        void mul64(ulong m) @safe pure nothrow
+        {
+            const lo = cast(uint) m, hi = cast(uint)(m >> 32);
+            auto copy = dup;
+            mulAdd(lo, 0);
+            copy.mulAdd(hi, 0);
+            copy.shl(32);
+            add(copy);
+        }
+
+        // this += b
+        void add(const ref Big b) @safe pure nothrow
+        {
+            if (d.length < b.d.length)
+                setLength(b.d.length);
+            ulong carry = 0;
+            auto x = d;
+            foreach (k; 0 .. x.length)
+            {
+                const t = cast(ulong) x[k] + (k < b.d.length ? b.d[k] : 0) + carry;
+                x[k] = cast(uint) t;
+                carry = t >> 32;
+            }
+            if (carry)
+            {
+                setLength(d.length + 1);
+                d[$ - 1] = cast(uint) carry;
+            }
+        }
+
+        // this >>= 1
+        void shr1() @safe pure nothrow
+        {
+            auto x = d;
+            foreach (k; 0 .. x.length)
+                x[k] = (x[k] >> 1) | (k + 1 < x.length ? x[k + 1] << 31 : 0);
+            trim();
+        }
+
+        void trim() @safe pure nothrow
+        {
+            size_t n = d.length;
+            while (n && d[n - 1] == 0)
+                --n;
+            setLength(n);
+        }
+
+        int cmp(const ref Big b) const @safe pure nothrow @nogc
+        {
+            if (d.length != b.d.length)
+                return d.length < b.d.length ? -1 : 1;
+            foreach_reverse (k; 0 .. d.length)
+                if (d[k] != b.d[k])
+                    return d[k] < b.d[k] ? -1 : 1;
+            return 0;
+        }
+
+        // this -= b, where b <= this
+        void sub(const ref Big b) @safe pure nothrow
+        {
+            long borrow = 0;
+            auto x = d;
+            foreach (k; 0 .. x.length)
+            {
+                long t = cast(long) x[k] - (k < b.d.length ? b.d[k] : 0) - borrow;
+                borrow = t < 0;
+                x[k] = cast(uint) t;
+            }
+            trim();
+        }
+    }
+
+    /* The value nearest digits * 10^^exp10 (plus a little if sticky), ties
+     * to even, as T: infinity past the largest finite value, and 0 below half
+     * the smallest subnormal
+     */
+    static T convert(T)(scope const(ubyte)[] digits, long exp10, bool sticky) @safe pure nothrow
+    {
+        enum int p = T.mant_dig;
+        enum int emin = T.min_exp - 1;          // exponent of the smallest normal
+
+        // trailing zeros only scale
+        size_t n = digits.length;
+        while (n > 1 && digits[n - 1] == 0)
+        {
+            --n;
+            ++exp10;
+        }
+        digits = digits[0 .. n];
+
+        /* A significand and a power of ten both exact in T give the nearest
+         * value with one multiplication or division (Clinger's fast path).
+         * Not in CTFE, which may compute in a wider type, nor with x87 code
+         */
+        version (X86) {} else
+        if (!__ctfe && !sticky && n <= 19 && (p == 24 || p == 53))
+        {
+            enum int maxPow10 = p == 24 ? 10 : 22;
+            ulong sig = 0;
+            foreach (dg; digits)
+                sig = sig * 10 + dg;
+            if (sig <= (1UL << p) && exp10 >= -maxPow10 && exp10 <= maxPow10)
+            {
+                T v = cast(T) sig;
+                T pw = 1;
+                foreach (k; 0 .. (exp10 < 0 ? -exp10 : exp10))
+                    pw *= 10;
+                return exp10 < 0 ? v / pw : v * pw;
+            }
+        }
+
+        /* A significand of up to 19 digits and a power of ten up to 10^^27
+         * take one 128 bit multiplication or division: 5^^27 fits 64 bits
+         */
+        if (!__ctfe && n <= 19 && p <= 61 && exp10 >= -27 && exp10 <= 27)
+            return convertSmall!T(digits, cast(int) exp10, sticky);
+
+        // out of range whatever the digits: the value is in [10^^(m-1), 10^^m)
+        const m = cast(long) n + exp10;
+        if (m > T.max_10_exp + 1)
+            return T.infinity;
+        if (m < cast(long)((emin - p) * 0.30103) - 2)
+            return 0;
+
+        /* The integers take at most this many bits: the digits, the power of
+         * five, and the shift that gives the quotient p + 4 bits
+         */
+        const absExp = exp10 < 0 ? -exp10 : exp10;
+        const bits = n * 7 / 2 + absExp * 7 / 3 + p + 140;
+        enum cap = 48;
+        if (__ctfe || bits > cap * 32)
+            return convertWith!(T, 0)(digits, exp10, sticky);
+        return convertWith!(T, cap)(digits, exp10, sticky);
+    }
+
+    private static T convertWith(T, size_t cap)(scope const(ubyte)[] digits, long exp10, bool sticky)
+        @safe pure nothrow
+    {
+        enum int p = T.mant_dig;
+        enum int emin = T.min_exp - 1;
+        enum int emax = T.max_exp - 1;          // exponent of the largest finite
+
+        // the value is num / den, times 2^^exp10
+        Big!cap num, den;
+        num.fromDigits(digits);
+        den.setLength(1);
+        den.d[0] = 1;
+        if (exp10 >= 0)
+            num.mulPow5(exp10);
+        else
+            den.mulPow5(-exp10);
+        const long e2 = exp10;
+
+        /* q = floor(num * 2^^s / den), with at least p + 2 bits, so the value is
+         * (q + frac) * 2^^(e2 - s)
+         */
+        const long s = (p + 3) - (cast(long) num.bitLength - cast(long) den.bitLength);
+        if (s > 0)
+            num.shl(cast(size_t) s);
+        else if (s < 0)
+            den.shl(cast(size_t) -s);
+        alias r = num;                          // the remainder, in place
+        ulong[3] q;                             // p + 5 bits at most
+        static if (p + 5 > 64)
+        {
+            const qbits = r.bitLength + 1 > den.bitLength ? r.bitLength + 1 - den.bitLength : 0;
+            if (qbits)
+            {
+                den.shl(qbits - 1);
+                foreach_reverse (i; 0 .. qbits)
+                {
+                    if (r.cmp(den) >= 0)
+                    {
+                        r.sub(den);
+                        q[i / 64] |= 1UL << (i % 64);
+                    }
+                    den.shr1();
+                }
+            }
+        }
+        else
+        {
+            import core.int128 : Cent, inc, udiv;
+
+            /* An estimate from the top bits is at most 3 below the quotient,
+             * which has fewer than 64 bits
+             */
+            const dl = den.bitLength;
+            const k = dl > 64 ? dl - 64 : 0;
+            const Cent dTop = Cent(den.top64(k));
+            const Cent rTop = r.top128(k);
+            ulong qhat = udiv(rTop, k ? inc(dTop) : dTop).lo;
+            Big!cap t = den.dup;
+            t.mul64(qhat);
+            r.sub(t);
+            while (r.cmp(den) >= 0)
+            {
+                r.sub(den);
+                ++qhat;
+            }
+            q[0] = qhat;
+        }
+        sticky |= r.d.length != 0;
+
+        static bool qbit(const ref ulong[3] q, long i) @safe pure nothrow @nogc
+        {
+            return i >= 0 && i < 192 && ((q[cast(size_t) i / 64] >> (i % 64)) & 1);
+        }
+
+        // the value's leading bit is at 2^^msb
+        long qb = 0;
+        foreach_reverse (i; 0 .. 192)
+            if (qbit(q, i))
+            {
+                qb = i + 1;
+                break;
+            }
+        const long msb = qb - 1 + e2 - s;
+        long keepBits = p;
+        if (msb < emin)
+            keepBits = p - (emin - msb);
+        if (keepBits < 0)
+            keepBits = -1;                       // below half the smallest subnormal
+        const drop = qb - keepBits;
+
+        // the kept bits, rounded to nearest, ties to even
+        ulong[2] keep;
+        foreach (i; 0 .. (keepBits > 0 ? keepBits : 0))
+            if (qbit(q, drop + i))
+                keep[cast(size_t) i / 64] |= 1UL << (i % 64);
+        bool below = sticky;
+        foreach (i; 0 .. drop - 1)
+            below |= qbit(q, i);
+        if (qbit(q, drop - 1) && (below || (keep[0] & 1)))
+        {
+            if (++keep[0] == 0)
+                ++keep[1];
+        }
+
+        // keep * 2^^scale is exact in T, or overflows
+        if (msb > emax + 1)
+            return T.infinity;
+        T v = cast(T) keep[1];
+        v = v * cast(T) 0x1p32 * cast(T) 0x1p32 + cast(T) keep[0];
+        return scaleBy(v, drop + e2 - s);
+    }
+
+    private static T convertSmall(T)(scope const(ubyte)[] digits, int exp10, bool sticky)
+        @safe pure nothrow @nogc
+    {
+        import core.int128 : Cent, mul, shl, shr, udivmod;
+
+        enum int p = T.mant_dig;
+        enum int emax = T.max_exp - 1;
+
+        static int bitLength(Cent c) @safe pure nothrow @nogc
+        {
+            int n = 0;
+            ulong top = c.hi ? c.hi : c.lo;
+            while (top)
+            {
+                ++n;
+                top >>= 1;
+            }
+            return c.hi ? n + 64 : n;
+        }
+
+        ulong sig = 0;
+        foreach (dg; digits)
+            sig = sig * 10 + dg;
+        ulong pow5 = 1;
+        foreach (k; 0 .. (exp10 < 0 ? -exp10 : exp10))
+            pow5 *= 5;
+
+        // the value is (q + frac) * 2^^e2, frac nonzero if sticky
+        Cent q;
+        int e2 = exp10;
+        if (exp10 >= 0)
+            q = mul(sig, pow5);
+        else
+        {
+            // q gets p + 3 or p + 4 bits
+            Cent d = Cent(pow5);
+            const s = (p + 3) - (bitLength(Cent(sig)) - bitLength(d));
+            Cent rem;
+            q = s >= 0 ? udivmod(shl(Cent(sig), s), d, rem) : udivmod(Cent(sig), shl(d, -s), rem);
+            sticky |= rem.lo != 0 || rem.hi != 0;
+            e2 -= s;
+        }
+
+        const qb = bitLength(q);
+        if (qb <= p && !sticky)
+            return scaleBy(cast(T) q.lo, e2);   // exact
+        const drop = qb - p;
+        ulong keep = shr(q, drop).lo;
+        const below = sticky || (drop > 1 && shl(q, 128 - (drop - 1)) != Cent(0));
+        const roundBit = ((drop - 1 < 64 ? q.lo >> (drop - 1) : q.hi >> (drop - 65)) & 1) != 0;
+        if (roundBit && (below || (keep & 1)))
+            ++keep;
+        if (qb - 1 + e2 > emax)
+            return T.infinity;
+        return scaleBy(cast(T) keep, drop + e2);
+    }
+
+    // v * 2^^k, in steps that are each exact while the result is representable
+    private static T scaleBy(T)(T v, long k) @safe pure nothrow
+    {
+        for (; k > 60; k -= 60)
+        {
+            v *= cast(T) 0x1p60;
+            if (v == T.infinity)
+                return v;
+        }
+        for (; k < -60; k += 60)
+            v *= cast(T) 0x1p-60;
+        T f = 1;
+        if (k > 0)
+            f = cast(T)(1UL << k);
+        else if (k < 0)
+            f = 1 / cast(T)(1UL << -k);
+        return v * f;
+    }
 }
